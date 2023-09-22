@@ -74,14 +74,17 @@ def uploader(path):
     inUpload = False
 
 
-def refreshFetchList(isFirst):
+def refreshAbsoluteList(isFirst):
     L = open("absoluteList.txt", "r", encoding="utf-8").read().splitlines()
-    absoluteCheck = set()
+    absoluteCheck = set(); absoluteAka = dict();
     for line in L:
         if line.strip() == "" or line.strip().startswith('#'):
             continue
-        line = line.split("-")[0].strip()
+        line = line.replace(' - ', '-').replace('- ', '-').replace(' -', '-')
+        line, tmp = line.split('-'); line = line.strip();
+        
         absoluteCheck.add(line)
+        absoluteAka.update({line:tmp})
         
     for _recorder in absoluteRec:
         if _recorder.targetName not in absoluteCheck:
@@ -93,16 +96,19 @@ def refreshFetchList(isFirst):
     for targetName in absoluteCheck:
         if not isFirst:
             logging.info("{} added to absoluteList, check/record will started".format(targetName))
-        absoluteRec.append(Recorder(targetName))
+        absoluteRec.append(Recorder(targetName, absoluteAka[targetName]))
 
 def refreshConditionalList(isFirst):
     L = open("conditionalList.txt", "r", encoding="utf-8").read().splitlines()
-    conditionalCheck = set()
+    conditionalCheck = set(); conditionalAka = dict();
     for line in L:
         if line.strip() == "" or line.strip().startswith('#'):
             continue
-        line = line.split("-")[0].strip()
+        line = line.replace(' - ', '-').replace('- ', '-').replace(' -', '-')
+        line, tmp = line.split('-'); line = line.strip();
+        
         conditionalCheck.add(line)
+        conditionalAka.update({line:tmp})
         
     for _recorder in conditionalRec:
         if _recorder.targetName not in conditionalCheck:
@@ -114,7 +120,7 @@ def refreshConditionalList(isFirst):
     for targetName in conditionalCheck:
         if not isFirst:
             logging.info("{} added to conditionalList, check/record will started".format(targetName))
-        conditionalRec.append(Recorder(targetName))
+        conditionalRec.append(Recorder(targetName, conditionalAka[targetName]))
 
 def get_name(recorder):
     return recorder.targetName
@@ -173,11 +179,13 @@ if __name__ == '__main__':
     inUpload = False
     already = []
 
-    refreshFetchList(True)
+    refreshAbsoluteList(True)
     refreshConditionalList(True)
         
     while True:
-        refreshFetchList(False)
+        from config import topic, categ
+        
+        refreshAbsoluteList(False)
         refreshConditionalList(False)
 
         absolute = list(map(get_name, absoluteRec))
