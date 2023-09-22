@@ -11,15 +11,14 @@ import mail
 
 
 class Recorder:
-    def __init__(self, targetName, aka):
+    def __init__(self, targetName):
         self.targetName = targetName
-        self.aka = aka
         self.fetchThread: threading.Thread = None
 
         if not os.path.exists("output"):
             os.mkdir("output")
-        if not os.path.exists("output/" + self.aka):
-            os.mkdir("output/" + self.aka)
+        if not os.path.exists("output/" + self.targetName):
+            os.mkdir("output/" + self.targetName)
 
     def getFN(self, time):
         return f'{self.targetName}_{time}.mp4'
@@ -69,7 +68,7 @@ class Recorder:
         stream = streams['best']
         stream = stream.open()
 
-        fn = f'output/{self.aka}/' + self.getFN(time)
+        fn = f'output/{self.targetName}/' + self.getFN(time)
         file = open(fn, 'wb')
 
         recoverTries = 0
