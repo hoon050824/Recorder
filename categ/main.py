@@ -13,14 +13,25 @@ from twitchAPI.oauth import UserAuthenticator
 import asyncio
 
 import mail
-from config import categ, client_id, client_secret, use_gdrive, twitch_check_interval
+from config import topic, categ, client_id, client_secret, use_gdrive, twitch_check_interval
 from recorder import Recorder
 
 twitchClient: Twitch
-recorders: list[Recorder] = []
+absoluteRec: list[Recorder] = []
+conditionalRec: list[Recorder] = []
 topRecorder = {}
 
-def check(x, y):
+def checkTitle(x, y):
+    if x == []:
+        return False
+    
+    for i in x:
+        if i in y:
+            return True
+
+    return False
+
+def checkCateg(x, y):
     try:
         return x[y]
     except:
@@ -62,40 +73,68 @@ def uploader(path):
     global inUpload
     inUpload = False
 
-def refreshFetchList(isFirst):
-    L = open("fetchList.txt", "r", encoding="utf-8").read().splitlines()
-    fetchCheck = set()
+
+def refreshAbsoluteList(isFirst):
+    L = open("absoluteList.txt", "r", encoding="utf-8").read().splitlines()
+    absoluteCheck = set(); absoluteAka = dict();
     for line in L:
         if line.strip() == "" or line.strip().startswith('#'):
             continue
-        line = line.split("-")[0].strip()
-        fetchCheck.add(line)
+        line = line.replace(' - ', '-').replace('- ', '-').replace(' -', '-')
+        line, tmp = line.split('-'); line = line.strip();
         
-    for _recorder in recorders:
-        if not _recorder.targetName in fetchCheck:
-            logging.info("{} removed from list".format(_recorder.targetName))
-            recorders.remove(_recorder)
+        absoluteCheck.add(line)
+        absoluteAka.update({line:tmp})
+        
+    for _recorder in absoluteRec:
+        if _recorder.targetName not in absoluteCheck:
+            logging.info("{} removed from absoluteList".format(_recorder.targetName))
+            absoluteRec.remove(_recorder)
         else:
-            fetchCheck.remove(_recorder.targetName)
+            absoluteCheck.remove(_recorder.targetName)
 
-    for targetName in fetchCheck:
+    for targetName in absoluteCheck:
         if not isFirst:
-            logging.info("{} added to list, check/record will started".format(targetName))
-        recorders.append(Recorder(targetName))
+            logging.info("{} added to absoluteList, check/record will started".format(targetName))
+        absoluteRec.append(Recorder(targetName, absoluteAka[targetName]))
+
+def refreshConditionalList(isFirst):
+    L = open("conditionalList.txt", "r", encoding="utf-8").read().splitlines()
+    conditionalCheck = set(); conditionalAka = dict();
+    for line in L:
+        if line.strip() == "" or line.strip().startswith('#'):
+            continue
+        line = line.replace(' - ', '-').replace('- ', '-').replace(' -', '-')
+        line, tmp = line.split('-'); line = line.strip();
+        
+        conditionalCheck.add(line)
+        conditionalAka.update({line:tmp})
+        
+    for _recorder in conditionalRec:
+        if _recorder.targetName not in conditionalCheck:
+            logging.info("{} removed from conditionalList".format(_recorder.targetName))
+            conditionalRec.remove(_recorder)
+        else:
+            conditionalCheck.remove(_recorder.targetName)
+
+    for targetName in conditionalCheck:
+        if not isFirst:
+            logging.info("{} added to conditionalList, check/record will started".format(targetName))
+        conditionalRec.append(Recorder(targetName, conditionalAka[targetName]))
 
 def get_name(recorder):
     return recorder.targetName
 
-async def followed():
-    #print(twitchClient.get_users()['data'][0]['id'])
-    name = twitchClient.get_users()['data'][0]['id']
+async def getIndiv(x):
+    return twitchClient.get_streams(user_login = [x])
 
-    #print([i['game_name'] for i in twitchClient.get_followed_streams(name)['data']])
-    #print([i['user_name'] for i in twitchClient.get_followed_streams(name)['data'] if check(categ, i['game_name'])])
-    #print([i['user_login'] for i in twitchClient.get_followed_streams(name)['data'] if check(categ, i['game_name'])])
-    List = [i['game_name'] for i in twitchClient.get_followed_streams(name)['data'] if check(categ, i['game_name'])]
+def selec(x):
+    try:
+        judge = asyncio.run(getIndiv(x))['data'][0]
+    except:
+        return False
 
-    return List
+    return checkTitle(topic, judge['title']) or checkCateg(categ, judge['game_name'])
 
 if __name__ == '__main__':
     logging.basicConfig(filename='recorder.log', format='%(asctime)s %(message)s', filemode='a', level=logging.INFO)
@@ -138,47 +177,40 @@ if __name__ == '__main__':
 
         uploadThread = None
     inUpload = False
-
-    refreshFetchList(True)
     already = []
+
+    refreshAbsoluteList(True)
+    refreshConditionalList(True)
         
     while True:
-        refreshFetchList(False)
+        from config import topic, categ
+        
+        refreshAbsoluteList(False)
+        refreshConditionalList(False)
 
-        intended = list(map(get_name, recorders))
-        categ = list(asyncio.run(followed()))
+        absolute = list(map(get_name, absoluteRec))
+        conditional = list(filter(selec, map(get_name, conditionalRec)))
+
+        total = absolute + conditional
+        totalRec = absoluteRec + conditionalRec
         recorder: Recorder
 
-        #print(intended)
-        #print(categ)
-
         os.system('cls')
-        if intended:
+        if total:
             onlineCount = 0
-            for i in range(0, len(intended), 100):
+            for i in range(0, len(total), 100):
                 try:
-                    streams = twitchClient.get_streams(user_login = intended[i:i + 100], first=100)
+                    streams = twitchClient.get_streams(user_login = total[i:i + 100], first=100)
                     onlineCount += len(streams['data'])
                     for stream in streams['data']:
-                        for recorder in recorders:
+                        for recorder in totalRec:
                             if recorder.targetName == stream['user_login']:
                                 recorder.requestRecord()
                         print(f"{stream['user_login']}: Live")
                 except:
                     pass
-            print(f"Checked: {onlineCount}/{len(intended)} is Online.")
-        print()
-        
-        if categ:
-            for i in categ:
-                if i not in already:
-                    recorder = Recorder(i)
-                    recorder.requestRecord()
-                    already.append(i)
-                print(f"{i}: Category")
-            print(f"{len(categ)} Broadcasts Belong the Category.")
-        print()
-                
+            print(f"Checked: {onlineCount}/{len(totalRec)} is Online.")
+        print()                
 
         time.sleep(twitch_check_interval)
 
